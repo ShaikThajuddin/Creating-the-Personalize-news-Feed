@@ -1,0 +1,144 @@
+AWS Services:
+
+S3: Stores uploaded files.
+Lambda: Processes files and serves the API.
+DynamoDB: Stores structured article data.
+Personalize: Recommends articles.
+Cognito: Authenticates users.
+API Gateway: Exposes the feed endpoint.
+CloudWatch: Logs and monitors.
+
+
+
+Go to S3 console → “Create Bucket”.
+Configure:
+Name: news-feed-raw-data-<your-unique-id> (e.g., news-feed-raw-data-abc123, globally unique).
+Region: us-east-1 (or your preferred region).
+Defaults: Block public access (secure by default).
+Create the bucket.
+
+
+
+Go to DynamoDB console → “Create Table”.
+Configure:
+Table Name: NewsArticles.
+Partition Key: article_id (string).
+Attributes: Defined dynamically in Lambda (e.g., title, content, category).
+Settings: Use default (provisioned capacity, auto-scaling).
+Create the table.
+
+
+Create the Function:
+Go to Lambda console → “Create Function”.
+Name: NewsProcessor.
+Runtime: Python 3.9.
+Role: LambdaNewsFeedRole
+
+Install Dependencies:
+.csv processing needs pandas (or csv module).
+Create a local directory:
+
+mkdir news_processor
+cd news_processor
+pip3 install pandas -t .
+Write the Code:
+
+
+
+Go to S3 console → news-feed-raw-data-abc123 → Properties → “Event Notifications” → “Create Event Notification”.
+Configure:
+Name: NewsFileUploadTrigger.
+Events: All object create events (s3:ObjectCreated:*).
+Filters (optional):
+Suffix: .json (create one notification).
+Suffix: .csv (create another, or combine in one).
+Target: Lambda → NewsProcessor.
+Save.
+Verify Lambda permissions:
+Lambda console → NewsProcessor → Configuration → Permissions → Resource-based policy should include S3.
+
+
+
+Go to Cognito console → “Manage User Pools” → “Create User Pool”.
+Configure:
+Name: NewsFeedUsers.
+Attributes: Email only.
+Policies: Default (password strength, etc.).
+MFA: Optional (disable for simplicity).
+Create the pool.
+Create an app client:
+App Clients → “Add App Client”.
+Name: NewsFeedApp.
+Uncheck “Generate client secret” (for easier testing).
+Save and note the Client ID.
+Note the User Pool ID (e.g., us-east-1_abc123).
+
+
+
+Prepare Interaction Data:
+If your .csv contains interactions (e.g., USER_ID,ITEM_ID,TIMESTAMP), upload to a separate S3 folder:
+Path: s3://news-feed-raw-data-abc123/interactions/.
+Example interactions.csv:
+csv
+
+USER_ID,ITEM_ID,TIMESTAMP
+user123,art1,1617235200
+user456,art2,1617235201
+If no interactions yet, you can mock data later or skip to API serving with DynamoDB data.
+Create Dataset Group:
+Go to Personalize console → “Create Dataset Group” → Name: NewsFeedPersonalization.
+Create Interactions Dataset:
+Datasets → “Create Dataset” → Type: Interactions.
+Schema:
+json
+{
+  "type": "record",
+  "name": "Interactions",
+  "namespace": "com.amazonaws.personalize.schema",
+  "fields": [
+    {"name": "USER_ID", "type": "string"},
+    {"name": "ITEM_ID", "type": "string"},
+    {"name": "TIMESTAMP", "type": "long"}
+  ]
+}
+Import Data:
+Dataset → “Create Import Job”.
+Source: s3://news-feed-raw-data-abc123/interactions/interactions.csv.
+Wait (~10-20 minutes).
+Train a Solution:
+Solutions → “Create Solution” → Recipe: aws-user-personalization.
+Train (~30-60 minutes).
+Create a Campaign:
+Name: NewsFeedCampaign.
+Note the ARN (e.g., arn:aws:personalize:us-east-1:123456789012:campaign/NewsFeedCampaign).
+
+
+
+Create the Function:
+Lambda console → “Create Function”.
+Name: NewsServer.
+Runtime: Python 3.9.
+Role: LambdaNewsFeedRole.
+Write the Code:
+
+
+
+
+Go to API Gateway console → “Create API” → REST API.
+Configure:
+Name: NewsFeedAPI.
+Resource: /feed.
+Method: GET → Integration: Lambda → NewsServer.
+Add Cognito Authorizer:
+Authorizers → “Create” → Cognito.
+Select NewsFeedUsers user pool.
+Apply to /feed GET method.
+Deploy:
+Actions → Deploy API → Stage: prod.
+Note the URL (e.g., https://abc123.execute-api.us-east-1.amazonaws.com/prod/feed).
+
+
+
+Go to CloudWatch → Logs → Log Groups → Check /aws/lambda/NewsProcessor and /aws/lambda/NewsServer.
+Optional: Create alarms (e.g., for Lambda errors).
+

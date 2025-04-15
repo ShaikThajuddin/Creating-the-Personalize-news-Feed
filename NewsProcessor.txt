@@ -1,0 +1,47 @@
+import boto3
+import json
+import pandas as pd
+import uuid
+from io import StringIO
+
+s3 = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('NewsArticles')
+
+def lambda_handler(event, context):
+    bucket = event['Records'][0]['s3']['bucket']['name']
+    key = event['Records'][0]['s3']['object']['key']
+    
+    # Download file
+    response = s3.get_object(Bucket=bucket, Key=key)
+    file_content = response['Body'].read().decode('utf-8')
+    
+    # Process based on file type
+    if key.endswith('.json'):
+        data = json.loads(file_content)
+        articles = data.get('articles', [])
+        for article in articles:
+            table.put_item(Item={
+                'article_id': str(uuid.uuid4()),
+                'title': article.get('title', 'No title'),
+                'content': article.get('content', 'No content'),
+                'category': article.get('category', 'general')
+            })
+    
+    elif key.endswith('.csv'):
+        df = pd.read_csv(StringIO(file_content))
+        for _, row in df.iterrows():
+            # Skip if it's an interaction file
+            if 'USER_ID' in df.columns:
+                continue  # Handled in Personalize later
+            table.put_item(Item={
+                'article_id': str(uuid.uuid4()),
+                'title': row.get('title', 'No title'),
+                'content': row.get('content', 'No content'),
+                'category': row.get('category', 'general')
+            })
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps(f'Processed {key}')
+    }

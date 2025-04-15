@@ -1,0 +1,18 @@
+NewsServerFunction
+
+
+import boto3
+import json
+
+personalize = boto3.client('personalize-runtime')
+
+def lambda_handler(event, context):
+    user_id = event['requestContext']['authorizer']['claims']['sub']  # From Cognito
+    response = personalize.get_recommendations(
+        campaignArn='arn:aws:personalize:us-east-1:123456789012:campaign/NewsFeedCampaign',
+        userId=user_id,
+        numResults=10
+    )
+    article_ids = [item['itemId'] for item in response['itemRecommendations']]
+    # Fetch articles from DynamoDB (simplified here)
+    return {"statusCode": 200, "body": json.dumps({"articles": article_ids})}

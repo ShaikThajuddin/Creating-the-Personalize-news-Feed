@@ -1,0 +1,9 @@
+json for the FetchNewsFunction:
+
+
+{
+  "articles": [
+    {"title": "Tech News", "content": "AI advances...", "category": "tech"},
+    {"title": "Sports Update", "content": "Team wins...", "category": "sports"}
+  ]
+}

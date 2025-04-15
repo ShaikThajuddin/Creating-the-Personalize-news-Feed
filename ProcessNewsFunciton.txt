@@ -1,0 +1,61 @@
+ProcessNewsFunciton:
+
+
+import boto3
+import json
+import uuid
+
+s3 = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+TABLE_NAME = 'NewsArticles'
+
+def lambda_handler(event, context):
+    # Initialize variables to avoid UnboundLocalError
+    bucket = None
+    key = None
+    
+    try:
+        # Extract bucket and file key from the event
+        bucket = event['Records'][0]['s3']['bucket']['name']
+        key = event['Records'][0]['s3']['object']['key']
+        
+        # Read the JSON file from S3
+        obj = s3.get_object(Bucket=bucket, Key=key)
+        news_data = json.loads(obj['Body'].read().decode('utf-8'))
+        
+        # Parse and store in DynamoDB
+        table = dynamodb.Table(TABLE_NAME)
+        articles = news_data.get('articles', [])
+        if not articles:
+            print(f"No articles found in {key}")
+            return {'statusCode': 400, 'body': f'No articles in {key}'}
+            
+        for article in articles:
+            table.put_item(Item={
+                'articles_id': str(uuid.uuid4()),  # Correct partition key
+                'title': article.get('title', ''),
+                'description': article.get('description', ''),
+                'category': article.get('category', key.split('_')[0]),  # Fallback to file name (e.g., 'Business')
+                'published_at': article.get('publishedAt', ''),
+                'url': article.get('url', '')
+            })
+        return {
+            'statusCode': 200,
+            'body': f'Processed {len(articles)} articles from {key}'
+        }
+    
+    except KeyError as e:
+        print(f"Invalid event format: {e}")
+        return {'statusCode': 400, 'body': f'Invalid event format: {str(e)}'}
+    except s3.exceptions.NoSuchKey as e:
+        print(f"S3 key not found: {e}")
+        return {'statusCode': 404, 'body': f'File {key or "unknown"} not found in bucket {bucket or "unknown"}'}
+    except json.JSONDecodeError as e:
+        print(f"JSON parsing error: {e}")
+        return {'statusCode': 400, 'body': f'Invalid JSON in {key or "unknown"}'}
+    except dynamodb.meta.client.exceptions.ClientError as e:
+        print(f"DynamoDB error: {e}")
+        return {'statusCode': 500, 'body': f'DynamoDB error for {key or "unknown"}: {str(e)}'}
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return {'statusCode': 500, 'body': f'Error processing {key or "unknown"}: {str(e)}'}

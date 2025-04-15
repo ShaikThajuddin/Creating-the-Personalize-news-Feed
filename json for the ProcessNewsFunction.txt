@@ -1,0 +1,21 @@
+json for the ProcessNewsFunction:
+
+
+{
+  "articles": [
+    {
+      "title": "Stock Market Surges",
+      "description": "The Dow Jones hit a new high today...",
+      "category": "Business",
+      "publishedAt": "2025-04-13T10:00:00Z",
+      "url": "https://example.com/news1"
+    },
+    {
+      "title": "Tech IPO Announced",
+      "description": "A new startup plans to go public...",
+      "category": "Business",
+      "publishedAt": "2025-04-13T11:00:00Z",
+      "url": "https://example.com/news2"
+    }
+  ]
+}

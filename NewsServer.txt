@@ -1,0 +1,45 @@
+import boto3
+import json
+
+personalize = boto3.client('personalize-runtime')
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('NewsArticles')
+
+def lambda_handler(event, context):
+    # Get user ID from Cognito
+    user_id = event['requestContext']['authorizer']['claims']['sub']
+    
+    # Get recommendations (fallback to DynamoDB if Personalize not ready)
+    article_ids = []
+    try:
+        response = personalize.get_recommendations(
+            campaignArn='arn:aws:personalize:us-east-1:123456789012:campaign/NewsFeedCampaign',
+            userId=user_id,
+            numResults=10
+        )
+        article_ids = [item['itemId'] for item in response['itemRecommendations']]
+    except:
+        # Fallback: Get recent articles
+        response = table.scan(Limit=10)
+        article_ids = [item['article_id'] for item in response.get('Items', [])]
+    
+    # Fetch article details
+    articles = []
+    for article_id in article_ids:
+        try:
+            item = table.get_item(Key={'article_id': article_id}).get('Item', {})
+            if item:
+                articles.append({
+                    'article_id': item['article_id'],
+                    'title': item['title'],
+                    'content': item['content'],
+                    'category': item['category']
+                })
+        except:
+            continue
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps({'articles': articles}),
+        'headers': {'Content-Type': 'application/json'}
+    }
